@@ -6,10 +6,13 @@ import random
 
 import numpy as np
 import torch
+from sklearn.metrics import confusion_matrix
 from transformers import AutoTokenizer
 
+from .config import ID_TO_NAME
 from .data import fold_indices, load_dataframe
 from .engine import train_fold
+from .plots import save_confusion_matrix
 
 
 def set_seed(seed):
@@ -36,11 +39,14 @@ def cross_validate(cfg, verbose=True):
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_name)
 
     fold_scores = []
+    oof_preds, oof_targets = [], []  # out-of-fold predictions, pooled for the matrix
     splits = fold_indices(df["label"].values, cfg.n_folds, cfg.seed)
     for fold, (train_idx, val_idx) in enumerate(splits, start=1):
         result = train_fold(
             cfg, tokenizer, df.iloc[train_idx], df.iloc[val_idx], device
         )
+        oof_preds.append(result.pop("preds"))
+        oof_targets.append(result.pop("targets"))
         fold_scores.append(result)
         if verbose:
             print(
@@ -50,7 +56,14 @@ def cross_validate(cfg, verbose=True):
                 f"(best epoch {result['epoch']})"
             )
 
+    class_ids = sorted(ID_TO_NAME)
+    cm = confusion_matrix(
+        np.concatenate(oof_targets), np.concatenate(oof_preds), labels=class_ids
+    )
+
     summary = _summarise(cfg, fold_scores)
+    summary["class_names"] = [ID_TO_NAME[i] for i in class_ids]
+    summary["confusion_matrix"] = cm.tolist()  # rows = true, cols = predicted
     if verbose:
         print(
             f"  => {cfg.mode:<8} {cfg.model_name}  "
@@ -76,9 +89,19 @@ def _summarise(cfg, fold_scores):
 
 
 def save_summary(summary, output_dir):
+    """Write the JSON summary and a confusion-matrix PNG next to it."""
     os.makedirs(output_dir, exist_ok=True)
-    name = f"{summary['mode']}_{summary['model_name'].replace('/', '-')}.json"
-    path = os.path.join(output_dir, name)
-    with open(path, "w") as f:
+    stem = f"{summary['mode']}_{summary['model_name'].replace('/', '-')}"
+
+    json_path = os.path.join(output_dir, stem + ".json")
+    with open(json_path, "w") as f:
         json.dump(summary, f, indent=2)
-    return path
+
+    png_path = os.path.join(output_dir, stem + "_confusion.png")
+    save_confusion_matrix(
+        np.array(summary["confusion_matrix"]),
+        summary["class_names"],
+        png_path,
+        title=f"{summary['mode']} - {summary['model_name']}",
+    )
+    return json_path

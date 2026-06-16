@@ -67,7 +67,7 @@ def train_fold(cfg, tokenizer, train_df, val_df, device):
     )
     criterion = nn.CrossEntropyLoss()
 
-    best = {"accuracy": 0.0, "macro_f1": 0.0, "epoch": 0}
+    best = {"accuracy": 0.0, "macro_f1": 0.0, "epoch": 0, "preds": None, "targets": None}
     for epoch in range(1, cfg.epochs + 1):
         model.train()
         for batch in train_loader:
@@ -80,8 +80,14 @@ def train_fold(cfg, tokenizer, train_df, val_df, device):
             optimizer.step()
             scheduler.step()
 
-        accuracy, macro_f1, _, _ = evaluate(model, val_loader, device)
+        accuracy, macro_f1, preds, targets = evaluate(model, val_loader, device)
         if macro_f1 > best["macro_f1"]:
-            best = {"accuracy": accuracy, "macro_f1": macro_f1, "epoch": epoch}
+            best = {
+                "accuracy": accuracy,
+                "macro_f1": macro_f1,
+                "epoch": epoch,
+                "preds": preds,
+                "targets": targets,
+            }
 
     return best
