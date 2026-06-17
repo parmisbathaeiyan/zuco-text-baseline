@@ -40,7 +40,9 @@ src/data.py         csv loading, tokenisation, stratified folds
 src/model.py        encoder + pooling + linear head
 src/engine.py       train / evaluate one fold
 src/experiment.py   the cross-validation loop
+src/plots.py        confusion matrices, learning curves, comparison bars
 run.py              command line entry point
+plot_results.py     build comparison plots from saved summaries
 notebooks/          a Colab notebook that drives run.py
 ```
 
@@ -60,6 +62,23 @@ python run.py --mode both \
 
 Per-fold and averaged scores print to the console, and a JSON summary for each
 run lands in `results/`.
+
+## Plots
+
+Once a few runs have been saved, turn them into comparison figures:
+
+```bash
+python plot_results.py --results-dir results
+```
+
+This writes to `results/plots/`:
+
+- `comparison.png` — test accuracy and macro-F1 across every backbone, frozen vs
+  fine-tuned, with std error bars over folds
+- `<run>_curves.png` — per-run learning curves (loss / accuracy / macro-F1 for
+  train, val and test, averaged over folds with std bands)
+
+The per-run confusion matrices are saved next to the JSONs by `run.py`.
 
 ## Running on Colab
 
