@@ -99,19 +99,21 @@ def _summarise(cfg, fold_scores):
 
 
 def save_summary(summary, output_dir):
-    """Write the JSON summary and a confusion-matrix PNG next to it."""
+    """Write the JSON summary to `output_dir` and its confusion-matrix PNG to
+    `output_dir/plots`, so the results folder holds only the summaries."""
     os.makedirs(output_dir, exist_ok=True)
+    plots_dir = os.path.join(output_dir, "plots")
+    os.makedirs(plots_dir, exist_ok=True)
     stem = f"{summary['mode']}_{summary['model_name'].replace('/', '-')}"
 
     json_path = os.path.join(output_dir, stem + ".json")
     with open(json_path, "w") as f:
         json.dump(summary, f, indent=2)
 
-    png_path = os.path.join(output_dir, stem + "_confusion.png")
     save_confusion_matrix(
         np.array(summary["confusion_matrix"]),
         summary["class_names"],
-        png_path,
+        os.path.join(plots_dir, stem + "_confusion.png"),
         title=f"{summary['mode']} - {summary['model_name']}",
     )
     return json_path

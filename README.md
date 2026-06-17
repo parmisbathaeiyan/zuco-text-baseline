@@ -77,8 +77,10 @@ This writes to `results/plots/`:
   fine-tuned, with std error bars over folds
 - `<run>_curves.png` — per-run learning curves (loss / accuracy / macro-F1 for
   train, val and test, averaged over folds with std bands)
+- `<run>_confusion.png` — per-run confusion matrix, written by `run.py`
 
-The per-run confusion matrices are saved next to the JSONs by `run.py`.
+The results directory itself holds only the JSON summaries; every PNG lives in
+`results/plots/`.
 
 ## Running on Colab
 
