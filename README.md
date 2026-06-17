@@ -42,7 +42,8 @@ src/engine.py       train / evaluate one fold
 src/experiment.py   the cross-validation loop
 src/plots.py        confusion matrices, learning curves, comparison bars
 run.py              command line entry point
-plot_results.py     build comparison plots from saved summaries
+plot_results.py     build plots for one results folder
+compare_runs.py     compare two or more results folders (e.g. mean vs cls)
 notebooks/          a Colab notebook that drives run.py
 ```
 
@@ -79,12 +80,27 @@ This writes to `results/plots/`:
 
 - `comparison.png` — test accuracy and macro-F1 across every backbone, frozen vs
   fine-tuned, with std error bars over folds
+- `curves_by_model_<setup>.png` — per setup, every backbone's test curves on
+  shared axes
 - `<run>_curves.png` — per-run learning curves (loss / accuracy / macro-F1 for
   train, val and test, averaged over folds with std bands)
 - `<run>_confusion.png` — per-run confusion matrix, written by `run.py`
 
 The results directory itself holds only the JSON summaries; every PNG lives in
 `results/plots/`.
+
+### Comparing pooling (or any two result sets)
+
+To put two runs side by side — e.g. `mean` vs `cls` pooling saved to separate
+folders:
+
+```bash
+python compare_runs.py \
+    --dirs results_mean results_cls --labels mean cls --out results_compare
+```
+
+This writes grouped-bar score charts per setup, a signed macro-F1 gap chart, and
+per-setup test-curve overlays (colour = backbone, line style = label).
 
 ## Running on Colab
 
