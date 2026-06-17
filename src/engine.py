@@ -25,6 +25,25 @@ def _move(batch, device):
     return {k: v.to(device) for k, v in batch.items()}
 
 
+def _build_optimizer(model, cfg):
+    """AdamW with separate rates for the encoder and the head.
+
+    Frozen encoders contribute no parameters here, so frozen runs simply train
+    the head at `head_lr`. When fine-tuning, the encoder moves slowly while a
+    randomly initialised head (the lstm pipeline) can use a larger rate.
+    """
+    encoder_params, head_params = [], []
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        (encoder_params if name.startswith("encoder.") else head_params).append(param)
+
+    groups = [{"params": head_params, "lr": cfg.head_lr}]
+    if encoder_params:
+        groups.append({"params": encoder_params, "lr": cfg.encoder_lr})
+    return torch.optim.AdamW(groups, weight_decay=cfg.weight_decay)
+
+
 @torch.no_grad()
 def evaluate(model, loader, device, criterion):
     """Return (loss, accuracy, macro_f1, predictions, targets) for a loader."""
@@ -64,14 +83,15 @@ def train_fold(cfg, tokenizer, train_df, val_df, test_df, device):
 
     model = TextClassifier(
         cfg.model_name,
-        pooling=cfg.pooling,
-        dropout=cfg.dropout,
+        head=cfg.head,
+        dropout=cfg.head_dropout,
         freeze_encoder=(cfg.mode == "frozen"),
+        max_length=cfg.max_length,
+        lstm_dim=cfg.lstm_dim,
+        dense_dim=cfg.dense_dim,
     ).to(device)
 
-    optimizer = torch.optim.AdamW(
-        model.trainable_parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
-    )
+    optimizer = _build_optimizer(model, cfg)
     total_steps = len(train_loader) * cfg.epochs
     scheduler = get_linear_schedule_with_warmup(
         optimizer, int(cfg.warmup_ratio * total_steps), total_steps

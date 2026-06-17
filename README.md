@@ -1,12 +1,32 @@
 # ZuCo text-only sentiment baseline
 
 How far can you get on ZuCo Task 1 sentiment classification using **only the
-sentence text** — no eye-tracking, no EEG? This repo answers that with a small,
-self-contained BERT baseline so the number is easy to cite and easy to beat.
+sentence text** — no eye-tracking, no EEG? This repo answers that with small,
+self-contained baselines so the numbers are easy to cite and easy to beat.
 
 The data is the 400-sentence ZuCo Task 1 set, labelled negative / neutral /
-positive. Because the set is small the scores are reported with cross-validation
-rather than a single split.
+positive. Because the set is small, scores come from cross-validation rather than
+a single split.
+
+## Setups
+
+A run is one combination of a **backbone**, a **head**, and a **mode**.
+
+| head | what sits on the encoder |
+|------|--------------------------|
+| `mean` | masked mean of the token embeddings + a linear classifier |
+| `cls` | the `[CLS]` token + a linear classifier |
+| `lstm` | the text component from Hollenstein et al. (2021): a BiLSTM over the token sequence, flattened, then dense + dropout + softmax |
+
+| mode | encoder |
+|------|---------|
+| `frozen` | weights fixed, only the head trains |
+| `finetune` | encoder and head train together |
+
+The full grid is therefore `backbones x {mean, cls, lstm} x {frozen, finetune}`.
+The `lstm` head reproduces the reference architecture (lstm_dim 256, dense 128,
+dropout 0.3); the paper fine-tunes BERT, here it can be run frozen or fine-tuned
+like the others.
 
 ## Evaluation protocol
 
@@ -15,95 +35,61 @@ Splitting is nested so the reported number never sees the data it was tuned on:
 - an **outer** stratified k-fold defines the **test** set for each fold,
 - a stratified slice of the remaining data (`val_size`) is the **validation**
   set, used only to pick the best epoch,
-- the model fits on **train**, and the score reported for the fold is on
-  **test**, at the epoch chosen on validation.
+- the model fits on **train**, and the score reported is on **test**.
 
-Per-fold test predictions are pooled into one confusion matrix covering all 400
-sentences exactly once. Each run also saves a full per-epoch history (train, val
-and test loss / accuracy / macro-F1) so you can plot learning curves.
-
-## Two setups
-
-| setup | what trains | use it for |
-|-------|-------------|------------|
-| `frozen` | a linear probe on top of fixed encoder features | a lower bound: how linearly separable the off-the-shelf embeddings are |
-| `finetune` | the whole encoder plus the head | the real text-only ceiling |
-
-Both run through the exact same model and training code; they differ only by
-whether the encoder weights are updated.
+Per-fold test predictions are pooled into one confusion matrix over all 400
+sentences. Each run also saves a per-epoch history (train / val / test loss,
+accuracy and macro-F1).
 
 ## Layout
 
 ```
-src/config.py       hyper-parameters and label mapping
+src/config.py       backbones, heads, modes and their hyper-parameters
 src/data.py         csv loading, tokenisation, stratified folds
-src/model.py        encoder + pooling + linear head
+src/model.py        encoder + mean / cls / lstm head
 src/engine.py       train / evaluate one fold
-src/experiment.py   the cross-validation loop
-src/plots.py        confusion matrices, learning curves, comparison bars
-run.py              command line entry point
-plot_results.py     build plots for one results folder
-compare_runs.py     compare two or more results folders (e.g. mean vs cls)
-notebooks/          a Colab notebook that drives run.py
+src/experiment.py   the cross-validation loop and result paths
+src/plots.py        confusion matrices, score bars, overview, curves
+run.py              the sweep (resumable, skips existing results)
+plot_results.py     build every comparison plot from a results tree
+notebooks/          a Colab notebook that drives the whole thing
 ```
 
-## Running locally
+## Results layout
+
+Each setup writes to its own folder, one JSON per backbone:
+
+```
+<output-dir>/
+  mean_frozen/bert-base-uncased.json
+  mean_finetune/bert-base-uncased.json
+  cls_frozen/...
+  lstm_frozen/...
+  plots/                 # everything plot_results.py produces
+```
+
+## Running
 
 ```bash
 pip install -r requirements.txt
-python run.py --mode both
-```
 
-Sweep a few backbones:
+# the whole grid; already-finished runs are skipped
+python run.py --output-dir results
 
-```bash
-python run.py --mode both \
-    --model-name bert-base-uncased roberta-base distilbert-base-uncased
-```
+# a slice
+python run.py --head lstm --mode frozen --model-name bert-base-uncased
 
-Pooling defaults to a masked mean over the token embeddings; pass
-`--pooling cls` to use the `[CLS]` token instead. Point each pooling at its own
-`--output-dir` so the runs don't overwrite each other.
-
-Per-fold and averaged scores print to the console, and a JSON summary for each
-run lands in `results/`.
-
-## Plots
-
-Once a few runs have been saved, turn them into comparison figures:
-
-```bash
+# rebuild all comparison plots
 python plot_results.py --results-dir results
 ```
 
-This writes to `results/plots/`:
+`run.py` is resumable: it skips any `<head>_<mode>/<model>.json` that already
+exists, so you can fill the grid incrementally (pass `--overwrite` to force a
+recompute).
 
-- `comparison.png` — test accuracy and macro-F1 across every backbone, frozen vs
-  fine-tuned, with std error bars over folds
-- `curves_by_model_<setup>.png` — per setup, every backbone's test curves on
-  shared axes
-- `<run>_curves.png` — per-run learning curves (loss / accuracy / macro-F1 for
-  train, val and test, averaged over folds with std bands)
-- `<run>_confusion.png` — per-run confusion matrix, written by `run.py`
+## Colab
 
-The results directory itself holds only the JSON summaries; every PNG lives in
-`results/plots/`.
-
-### Comparing pooling (or any two result sets)
-
-To put two runs side by side — e.g. `mean` vs `cls` pooling saved to separate
-folders:
-
-```bash
-python compare_runs.py \
-    --dirs results_mean results_cls --labels mean cls --out results_compare
-```
-
-This writes grouped-bar score charts per setup, a signed macro-F1 gap chart, and
-per-setup test-curve overlays (colour = backbone, line style = label).
-
-## Running on Colab
-
-Open `notebooks/zuco_text_baseline.ipynb` in Colab (GPU runtime), run the cells
-top to bottom. The first cell clones this repo; re-running it pulls the latest
-code, so updates here show up in Colab with one cell.
+Open `notebooks/zuco_text_baseline.ipynb` on a GPU runtime and run top to bottom.
+The first cell clones the repo, and re-running it pulls the latest code. There is
+an optional cell to fold existing result folders into the new layout so they are
+skipped.

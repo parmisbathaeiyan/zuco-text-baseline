@@ -13,7 +13,6 @@ from transformers import AutoTokenizer
 from .config import ID_TO_NAME
 from .data import fold_indices, load_dataframe
 from .engine import train_fold
-from .plots import save_confusion_matrix
 
 
 def set_seed(seed):
@@ -75,7 +74,7 @@ def cross_validate(cfg, verbose=True):
     summary["confusion_matrix"] = cm.tolist()  # rows = true, cols = predicted
     if verbose:
         print(
-            f"  => {cfg.mode:<8} {cfg.model_name}  "
+            f"  => {cfg.head}/{cfg.mode}  {cfg.model_name}  "
             f"acc {summary['accuracy_mean']:.3f} +/- {summary['accuracy_std']:.3f}  "
             f"macro-f1 {summary['macro_f1_mean']:.3f} +/- {summary['macro_f1_std']:.3f}"
         )
@@ -88,7 +87,7 @@ def _summarise(cfg, fold_scores):
     return {
         "model_name": cfg.model_name,
         "mode": cfg.mode,
-        "pooling": cfg.pooling,
+        "head": cfg.head,
         "n_folds": cfg.n_folds,
         "val_size": cfg.val_size,
         "accuracy_mean": float(np.mean(acc)),
@@ -99,22 +98,21 @@ def _summarise(cfg, fold_scores):
     }
 
 
+def setup_dir(output_dir, head, mode):
+    """The distinctively named folder that holds one setup's per-model results."""
+    return os.path.join(output_dir, f"{head}_{mode}")
+
+
+def result_path(output_dir, head, mode, model_name):
+    """Where a single (model, head, mode) summary lives."""
+    return os.path.join(setup_dir(output_dir, head, mode),
+                        model_name.replace("/", "-") + ".json")
+
+
 def save_summary(summary, output_dir):
-    """Write the JSON summary to `output_dir` and its confusion-matrix PNG to
-    `output_dir/plots`, so the results folder holds only the summaries."""
-    os.makedirs(output_dir, exist_ok=True)
-    plots_dir = os.path.join(output_dir, "plots")
-    os.makedirs(plots_dir, exist_ok=True)
-    stem = f"{summary['mode']}_{summary['model_name'].replace('/', '-')}"
-
-    json_path = os.path.join(output_dir, stem + ".json")
-    with open(json_path, "w") as f:
+    """Write one JSON summary into its setup folder. Plots are built separately."""
+    path = result_path(output_dir, summary["head"], summary["mode"], summary["model_name"])
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
         json.dump(summary, f, indent=2)
-
-    save_confusion_matrix(
-        np.array(summary["confusion_matrix"]),
-        summary["class_names"],
-        os.path.join(plots_dir, stem + "_confusion.png"),
-        title=f"{summary['mode']} - {summary['model_name']}",
-    )
-    return json_path
+    return path
