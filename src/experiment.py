@@ -88,6 +88,7 @@ def _summarise(cfg, fold_scores):
     return {
         "model_name": cfg.model_name,
         "mode": cfg.mode,
+        "pooling": cfg.pooling,
         "n_folds": cfg.n_folds,
         "val_size": cfg.val_size,
         "accuracy_mean": float(np.mean(acc)),

@@ -60,6 +60,10 @@ python run.py --mode both \
     --model-name bert-base-uncased roberta-base distilbert-base-uncased
 ```
 
+Pooling defaults to a masked mean over the token embeddings; pass
+`--pooling cls` to use the `[CLS]` token instead. Point each pooling at its own
+`--output-dir` so the runs don't overwrite each other.
+
 Per-fold and averaged scores print to the console, and a JSON summary for each
 run lands in `results/`.
 
