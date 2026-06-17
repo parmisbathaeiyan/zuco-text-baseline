@@ -9,6 +9,8 @@ matplotlib.use("Agg")  # write files without needing a display
 import matplotlib.pyplot as plt
 import numpy as np
 
+from .config import HEADS
+
 _METRICS = [("loss", "loss"), ("accuracy", "accuracy"), ("macro_f1", "macro-F1")]
 
 
@@ -95,9 +97,18 @@ def plot_grouped_scores(summaries, bar_key, path, title):
 
 
 def plot_overview_heatmap(summaries, metric, path):
-    """Heatmap of one metric: rows are head/mode setups, columns are backbones."""
+    """Heatmap of one metric: rows are head/mode setups, columns are backbones.
+
+    Rows are ordered fine-tuned on top, frozen on the bottom, with the heads in
+    their canonical order within each block and a divider between the two.
+    """
     models = sorted({s["model_name"] for s in summaries}, key=short_name)
-    setups = sorted({(head_of(s), s["mode"]) for s in summaries})
+    mode_rank = {"finetune": 0, "frozen": 1}
+    head_rank = {h: i for i, h in enumerate(HEADS)}
+    setups = sorted(
+        {(head_of(s), s["mode"]) for s in summaries},
+        key=lambda hm: (mode_rank.get(hm[1], 9), head_rank.get(hm[0], 9)),
+    )
     lookup = {(s["model_name"], head_of(s), s["mode"]): s for s in summaries}
 
     grid = np.full((len(setups), len(models)), np.nan)
@@ -107,17 +118,26 @@ def plot_overview_heatmap(summaries, metric, path):
             if s:
                 grid[i, j] = s[f"{metric}_mean"]
 
-    fig, ax = plt.subplots(figsize=(1.5 * len(models) + 2, 0.6 * len(setups) + 2))
+    fig, ax = plt.subplots(figsize=(1.15 * len(models) + 1.8, 0.78 * len(setups) + 1.2))
     im = ax.imshow(grid, cmap="viridis", vmin=0, vmax=1, aspect="auto")
-    ax.set_xticks(range(len(models)), [short_name(m) for m in models], rotation=30, ha="right")
-    ax.set_yticks(range(len(setups)), [f"{h}/{m}" for h, m in setups])
+    ax.set_xticks(range(len(models)), [short_name(m) for m in models],
+                  rotation=30, ha="right", fontsize=13)
+    ax.set_yticks(range(len(setups)), [f"{mode} · {head}" for head, mode in setups], fontsize=13)
     for i in range(len(setups)):
         for j in range(len(models)):
             if not np.isnan(grid[i, j]):
                 ax.text(j, i, f"{grid[i, j]:.2f}", ha="center", va="center",
-                        color="white" if grid[i, j] < 0.6 else "black", fontsize=8)
-    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    ax.set_title(f"{metric.replace('_', '-')} (mean over folds)", fontsize=11)
+                        color="white" if grid[i, j] < 0.6 else "black",
+                        fontsize=15, fontweight="medium")
+
+    # white line between the fine-tuned block (top) and the frozen block
+    split = sum(1 for _, mode in setups if mode_rank.get(mode, 9) == 0)
+    if 0 < split < len(setups):
+        ax.axhline(split - 0.5, color="white", linewidth=2.5)
+
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cbar.ax.tick_params(labelsize=11)
+    ax.set_title(f"{metric.replace('_', '-')} (mean over folds)", fontsize=14)
     fig.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)
