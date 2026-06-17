@@ -26,30 +26,41 @@ def _move(batch, device):
 
 
 @torch.no_grad()
-def evaluate(model, loader, device):
-    """Return (accuracy, macro_f1, predictions, targets) for a data loader."""
+def evaluate(model, loader, device, criterion):
+    """Return (loss, accuracy, macro_f1, predictions, targets) for a loader."""
     model.eval()
-    preds, targets = [], []
+    preds, targets, total_loss = [], [], 0.0
     for batch in loader:
         batch = _move(batch, device)
         logits = model(**batch)
+        total_loss += criterion(logits, batch["labels"]).item() * len(batch["labels"])
         preds.append(logits.argmax(dim=-1).cpu().numpy())
         targets.append(batch["labels"].cpu().numpy())
 
     preds = np.concatenate(preds)
     targets = np.concatenate(targets)
+    loss = total_loss / len(targets)
     accuracy = accuracy_score(targets, preds)
     macro_f1 = f1_score(targets, preds, average="macro")
-    return accuracy, macro_f1, preds, targets
+    return loss, accuracy, macro_f1, preds, targets
 
 
-def train_fold(cfg, tokenizer, train_df, val_df, device):
-    """Train one model on a single train/val split and report its best epoch."""
-    train_ds = SentenceDataset(train_df["sentence"], train_df["label"], tokenizer, cfg.max_length)
-    val_ds = SentenceDataset(val_df["sentence"], val_df["label"], tokenizer, cfg.max_length)
+def train_fold(cfg, tokenizer, train_df, val_df, test_df, device):
+    """Train one model and report the test split at the best validation epoch.
 
-    train_loader = _loader(train_ds, cfg.batch_size, True, cfg.num_workers)
-    val_loader = _loader(val_ds, cfg.batch_size, False, cfg.num_workers)
+    Three splits with distinct jobs: the model fits on `train`, the best epoch
+    is chosen on `val`, and the reported numbers (plus the predictions feeding
+    the confusion matrix) come from `test`, which is never used for fitting or
+    model selection. A full per-epoch history is returned for learning curves.
+    """
+    def make_loader(df, shuffle):
+        ds = SentenceDataset(df["sentence"], df["label"], tokenizer, cfg.max_length)
+        return _loader(ds, cfg.batch_size, shuffle, cfg.num_workers)
+
+    train_loader = make_loader(train_df, shuffle=True)
+    train_eval_loader = make_loader(train_df, shuffle=False)  # for clean train metrics
+    val_loader = make_loader(val_df, shuffle=False)
+    test_loader = make_loader(test_df, shuffle=False)
 
     model = TextClassifier(
         cfg.model_name,
@@ -67,7 +78,8 @@ def train_fold(cfg, tokenizer, train_df, val_df, device):
     )
     criterion = nn.CrossEntropyLoss()
 
-    best = {"accuracy": 0.0, "macro_f1": 0.0, "epoch": 0, "preds": None, "targets": None}
+    history = []
+    best = {"val_macro_f1": -1.0}
     for epoch in range(1, cfg.epochs + 1):
         model.train()
         for batch in train_loader:
@@ -80,14 +92,27 @@ def train_fold(cfg, tokenizer, train_df, val_df, device):
             optimizer.step()
             scheduler.step()
 
-        accuracy, macro_f1, preds, targets = evaluate(model, val_loader, device)
-        if macro_f1 > best["macro_f1"]:
+        tr_loss, tr_acc, tr_f1, _, _ = evaluate(model, train_eval_loader, device, criterion)
+        va_loss, va_acc, va_f1, _, _ = evaluate(model, val_loader, device, criterion)
+        te_loss, te_acc, te_f1, te_preds, te_targets = evaluate(model, test_loader, device, criterion)
+
+        history.append({
+            "epoch": epoch,
+            "train_loss": tr_loss, "train_accuracy": tr_acc, "train_macro_f1": tr_f1,
+            "val_loss": va_loss, "val_accuracy": va_acc, "val_macro_f1": va_f1,
+            "test_loss": te_loss, "test_accuracy": te_acc, "test_macro_f1": te_f1,
+        })
+
+        # epoch selection is on val only; test is snapshotted for reporting
+        if va_f1 > best["val_macro_f1"]:
             best = {
-                "accuracy": accuracy,
-                "macro_f1": macro_f1,
                 "epoch": epoch,
-                "preds": preds,
-                "targets": targets,
+                "val_macro_f1": va_f1,
+                "accuracy": te_acc,
+                "macro_f1": te_f1,
+                "preds": te_preds,
+                "targets": te_targets,
             }
 
+    best["history"] = history
     return best

@@ -34,7 +34,8 @@ class Config:
     max_grad_norm: float = 1.0
 
     # evaluation
-    n_folds: int = 5
+    n_folds: int = 5          # outer folds; each held-out fold is the test set
+    val_size: float = 0.15    # fraction of each fold's train portion kept for epoch selection
     seed: int = 42
 
     # misc

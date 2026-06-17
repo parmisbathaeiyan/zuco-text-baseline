@@ -5,8 +5,22 @@ sentence text** — no eye-tracking, no EEG? This repo answers that with a small
 self-contained BERT baseline so the number is easy to cite and easy to beat.
 
 The data is the 400-sentence ZuCo Task 1 set, labelled negative / neutral /
-positive. Because the set is small the scores are reported with **stratified
-k-fold cross-validation** rather than a single split.
+positive. Because the set is small the scores are reported with cross-validation
+rather than a single split.
+
+## Evaluation protocol
+
+Splitting is nested so the reported number never sees the data it was tuned on:
+
+- an **outer** stratified k-fold defines the **test** set for each fold,
+- a stratified slice of the remaining data (`val_size`) is the **validation**
+  set, used only to pick the best epoch,
+- the model fits on **train**, and the score reported for the fold is on
+  **test**, at the epoch chosen on validation.
+
+Per-fold test predictions are pooled into one confusion matrix covering all 400
+sentences exactly once. Each run also saves a full per-epoch history (train, val
+and test loss / accuracy / macro-F1) so you can plot learning curves.
 
 ## Two setups
 

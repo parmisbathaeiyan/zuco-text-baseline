@@ -7,6 +7,7 @@ import random
 import numpy as np
 import torch
 from sklearn.metrics import confusion_matrix
+from sklearn.model_selection import train_test_split
 from transformers import AutoTokenizer
 
 from .config import ID_TO_NAME
@@ -27,10 +28,12 @@ def pick_device():
 
 
 def cross_validate(cfg, verbose=True):
-    """Run stratified k-fold CV and return a summary of per-fold scores.
+    """Run nested stratified CV and return a summary of per-fold test scores.
 
-    A fresh model is trained from scratch on every fold; we report the best
-    validation epoch per fold and then average across folds.
+    The outer k-fold defines the test set for each fold; a stratified slice of
+    the remaining data becomes the validation set used to pick the best epoch.
+    A fresh model is trained per fold and the reported numbers are on the test
+    splits, pooled across folds for the confusion matrix.
     """
     set_seed(cfg.seed)
     device = pick_device()
@@ -39,20 +42,26 @@ def cross_validate(cfg, verbose=True):
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_name)
 
     fold_scores = []
-    oof_preds, oof_targets = [], []  # out-of-fold predictions, pooled for the matrix
+    oof_preds, oof_targets = [], []  # out-of-fold test predictions, pooled for the matrix
     splits = fold_indices(df["label"].values, cfg.n_folds, cfg.seed)
-    for fold, (train_idx, val_idx) in enumerate(splits, start=1):
-        result = train_fold(
-            cfg, tokenizer, df.iloc[train_idx], df.iloc[val_idx], device
+    for fold, (fit_idx, test_idx) in enumerate(splits, start=1):
+        fit_df, test_df = df.iloc[fit_idx], df.iloc[test_idx]
+        train_df, val_df = train_test_split(
+            fit_df,
+            test_size=cfg.val_size,
+            stratify=fit_df["label"],
+            random_state=cfg.seed,
         )
+
+        result = train_fold(cfg, tokenizer, train_df, val_df, test_df, device)
         oof_preds.append(result.pop("preds"))
         oof_targets.append(result.pop("targets"))
         fold_scores.append(result)
         if verbose:
             print(
                 f"  fold {fold}/{cfg.n_folds}  "
-                f"acc {result['accuracy']:.3f}  "
-                f"macro-f1 {result['macro_f1']:.3f}  "
+                f"test acc {result['accuracy']:.3f}  "
+                f"test macro-f1 {result['macro_f1']:.3f}  "
                 f"(best epoch {result['epoch']})"
             )
 
@@ -80,6 +89,7 @@ def _summarise(cfg, fold_scores):
         "model_name": cfg.model_name,
         "mode": cfg.mode,
         "n_folds": cfg.n_folds,
+        "val_size": cfg.val_size,
         "accuracy_mean": float(np.mean(acc)),
         "accuracy_std": float(np.std(acc)),
         "macro_f1_mean": float(np.mean(f1)),
