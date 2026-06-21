@@ -40,6 +40,8 @@ def parse_args():
     p.add_argument("--output-dir", default=Config.output_dir)
     p.add_argument("--overwrite", action="store_true",
                    help="recompute setups whose result already exists")
+    p.add_argument("--epochs", type=int, default=None,
+                   help="override the default epochs for every run in this sweep")
     return p.parse_args()
 
 
@@ -66,6 +68,8 @@ def main():
                 print(f"\n[{head}/{mode}] {model_name}")
                 cfg = base.with_setup(head, mode)
                 cfg.model_name = model_name
+                if args.epochs is not None:
+                    cfg.epochs = args.epochs
                 summary = cross_validate(cfg)
                 done.append(save_summary(summary, args.output_dir))
 
