@@ -45,6 +45,25 @@ def parse_args():
     return p.parse_args()
 
 
+def _already_done(path, requested_epochs):
+    """True if a usable result is already saved.
+
+    Without an explicit `--epochs`, any existing file counts. With one, the file
+    only counts if it was produced at that epoch budget, so bumping the epochs
+    recomputes stale runs while still skipping the ones already at the new value.
+    This makes an interrupted sweep safe to simply re-run.
+    """
+    if not os.path.exists(path):
+        return False
+    if requested_epochs is None:
+        return True
+    try:
+        with open(path) as f:
+            return json.load(f).get("epochs") == requested_epochs
+    except (OSError, ValueError):
+        return False
+
+
 def main():
     args = parse_args()
     base = Config(
@@ -60,7 +79,7 @@ def main():
         for head in args.head:
             for mode in args.mode:
                 path = result_path(args.output_dir, head, mode, model_name)
-                if os.path.exists(path) and not args.overwrite:
+                if not args.overwrite and _already_done(path, args.epochs):
                     print(f"skip {head}/{mode} {model_name} (already in {path})")
                     done.append(path)
                     continue
