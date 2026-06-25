@@ -1,12 +1,16 @@
 # ZuCo text-only sentiment baseline
 
-How far can you get on ZuCo Task 1 sentiment classification using **only the
-sentence text** — no eye-tracking, no EEG? This repo answers that with small,
+How far can you get on Task 1 sentiment classification using **only the sentence
+text** — no eye-tracking, no EEG? This repo answers that with small,
 self-contained baselines so the numbers are easy to cite and easy to beat.
 
-The data is the 400-sentence ZuCo Task 1 set, labelled negative / neutral /
-positive. Because the set is small, scores come from cross-validation rather than
-a single split.
+Two datasets, same task and pipeline:
+- **ZuCo** — 400 English sentences (negative / neutral / positive).
+- **TeCo** — 165 Persian sentences (the verified translations used in the TeCo
+  EEG recordings), same three labels.
+
+Because the sets are small, scores come from cross-validation rather than a
+single split.
 
 ## Setups
 
@@ -52,7 +56,9 @@ src/experiment.py   the cross-validation loop and result paths
 src/plots.py        confusion matrices, score bars, overview, curves
 run.py              the sweep (resumable, skips existing results)
 plot_results.py     build every comparison plot from a results tree
+compare_datasets.py put two datasets (ZuCo vs TeCo) side by side
 notebooks/          a Colab notebook that drives the whole thing
+data/               zuco and teco sentence csvs (same schema)
 ```
 
 ## Results layout
@@ -73,15 +79,22 @@ Each setup writes to its own folder, one JSON per backbone:
 ```bash
 pip install -r requirements.txt
 
-# the whole grid; already-finished runs are skipped
-python run.py --output-dir results
+# the whole grid for a dataset; already-finished runs are skipped
+python run.py --dataset zuco --output-dir zuco_results
+python run.py --dataset teco --output-dir teco_results
 
 # a slice
-python run.py --head lstm --mode frozen --model-name bert-base-uncased
+python run.py --dataset teco --head lstm --mode frozen --model-name bert-base-multilingual-cased
 
-# rebuild all comparison plots
-python plot_results.py --results-dir results
+# rebuild a dataset's plots, then compare the two datasets
+python plot_results.py --results-dir zuco_results
+python compare_datasets.py --dirs zuco_results teco_results --labels zuco teco --out zuco_vs_teco
 ```
+
+`--dataset` selects the csv (`zuco` is the default); both csvs live in `data/`.
+TeCo is Persian, so the multilingual backbones (`bert-base-multilingual-cased`,
+`sentence-transformers/LaBSE`) are the meaningful ones there — the English-only
+models are kept for the sweep but score near chance on Persian.
 
 `run.py` is resumable: it skips any `<head>_<mode>/<model>.json` that already
 exists, so you can fill the grid incrementally (pass `--overwrite` to force a

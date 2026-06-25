@@ -24,6 +24,13 @@ MODELS = [
 HEADS = ["mean", "cls", "lstm"]
 MODES = ["frozen", "finetune"]
 
+# Datasets share the same schema (a `sentence` column + a -1/0/1 `sentiment_label`),
+# so a dataset is just a different csv. TeCo is the Persian counterpart to ZuCo.
+DATASETS = {
+    "zuco": "data/zuco_sentiment_labels_task1_fixed.csv",
+    "teco": "data/teco_sentiment_labels_task1.csv",
+}
+
 
 def optim_defaults(head, mode):
     """Learning rates, epochs and batch size for a given head and mode.
@@ -42,6 +49,7 @@ def optim_defaults(head, mode):
 @dataclass
 class Config:
     # data
+    dataset: str = "zuco"          # "zuco" | "teco"; selects the csv via DATASETS
     csv_path: str = "data/zuco_sentiment_labels_task1_fixed.csv"
     max_length: int = 64           # longest sentence is ~43 words; 64 tokens is safe
 

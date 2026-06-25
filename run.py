@@ -21,13 +21,16 @@ import argparse
 import json
 import os
 
-from src.config import HEADS, MODELS, MODES, Config
+from src.config import DATASETS, HEADS, MODELS, MODES, Config
 from src.experiment import cross_validate, result_path, save_summary
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Text-only BERT baseline sweep for ZuCo sentiment.")
-    p.add_argument("--csv-path", default=Config.csv_path)
+    p = argparse.ArgumentParser(description="Text-only BERT baseline sweep for ZuCo/TeCo sentiment.")
+    p.add_argument("--dataset", choices=list(DATASETS), default="zuco",
+                   help="which dataset to run (selects the csv)")
+    p.add_argument("--csv-path", default=None,
+                   help="override the dataset's default csv path")
     p.add_argument("--model-name", nargs="+", default=MODELS,
                    help="one or more HuggingFace model ids")
     p.add_argument("--head", nargs="+", choices=HEADS, default=HEADS,
@@ -67,7 +70,8 @@ def _already_done(path, requested_epochs):
 def main():
     args = parse_args()
     base = Config(
-        csv_path=args.csv_path,
+        dataset=args.dataset,
+        csv_path=args.csv_path or DATASETS[args.dataset],
         n_folds=args.n_folds,
         max_length=args.max_length,
         seed=args.seed,

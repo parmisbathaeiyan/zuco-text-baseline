@@ -86,6 +86,7 @@ def _summarise(cfg, fold_scores):
     f1 = [s["macro_f1"] for s in fold_scores]
     return {
         "model_name": cfg.model_name,
+        "dataset": cfg.dataset,
         "mode": cfg.mode,
         "head": cfg.head,
         "epochs": cfg.epochs,
