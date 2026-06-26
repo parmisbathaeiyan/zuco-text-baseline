@@ -43,7 +43,7 @@ def optim_defaults(head, mode):
         return dict(encoder_lr=0.0, head_lr=1e-3, weight_decay=0.0,
                     epochs=30 if head == "lstm" else 20, batch_size=32)
     return dict(encoder_lr=2e-5, head_lr=1e-3 if head == "lstm" else 2e-5,
-                weight_decay=0.01, epochs=6 if head == "lstm" else 4, batch_size=16)
+                weight_decay=0.01, epochs=10, batch_size=16)
 
 
 @dataclass

@@ -48,23 +48,23 @@ def parse_args():
     return p.parse_args()
 
 
-def _already_done(path, requested_epochs):
-    """True if a usable result is already saved.
+def _already_done(path, target_epochs):
+    """True if a saved result already used `target_epochs`.
 
-    Without an explicit `--epochs`, any existing file counts. With one, the file
-    only counts if it was produced at that epoch budget, so bumping the epochs
-    recomputes stale runs while still skipping the ones already at the new value.
-    This makes an interrupted sweep safe to simply re-run.
+    A result counts as done only if it was produced at the epoch budget this run
+    would use, so changing the default epochs (or passing `--epochs`) recomputes
+    stale runs while skipping the up-to-date ones. Older results with no recorded
+    epoch count are kept as-is. This also makes an interrupted sweep safe to
+    simply re-run.
     """
     if not os.path.exists(path):
         return False
-    if requested_epochs is None:
-        return True
     try:
         with open(path) as f:
-            return json.load(f).get("epochs") == requested_epochs
+            saved = json.load(f).get("epochs")
     except (OSError, ValueError):
         return False
+    return saved is None or saved == target_epochs
 
 
 def main():
@@ -82,17 +82,18 @@ def main():
     for model_name in args.model_name:
         for head in args.head:
             for mode in args.mode:
+                cfg = base.with_setup(head, mode)
+                cfg.model_name = model_name
+                if args.epochs is not None:
+                    cfg.epochs = args.epochs
+
                 path = result_path(args.output_dir, head, mode, model_name)
-                if not args.overwrite and _already_done(path, args.epochs):
+                if not args.overwrite and _already_done(path, cfg.epochs):
                     print(f"skip {head}/{mode} {model_name} (already in {path})")
                     done.append(path)
                     continue
 
                 print(f"\n[{head}/{mode}] {model_name}")
-                cfg = base.with_setup(head, mode)
-                cfg.model_name = model_name
-                if args.epochs is not None:
-                    cfg.epochs = args.epochs
                 summary = cross_validate(cfg)
                 done.append(save_summary(summary, args.output_dir))
 
