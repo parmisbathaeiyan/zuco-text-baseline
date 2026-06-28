@@ -49,7 +49,10 @@ def _draw_cm(ax, cm, class_names, title):
 
 def plot_confusion_grid(summaries, path, title):
     """One confusion matrix per backbone, side by side, for a single setup."""
+    summaries = [s for s in summaries if s.get("confusion_matrix")]
     summaries = sorted(summaries, key=lambda s: short_name(s["model_name"]))
+    if not summaries:
+        return
     n = len(summaries)
     fig, axes = plt.subplots(1, n, figsize=(3.1 * n, 3.3), squeeze=False)
     for ax, s in zip(axes[0], summaries):
@@ -147,6 +150,11 @@ def plot_overview_heatmap(summaries, metric, path):
 
 def plot_model_curves(summaries, path, title, split="test"):
     """For a single setup, overlay every backbone's loss / accuracy / macro-F1."""
+    # legacy results may predate per-epoch history; skip those rather than crash
+    summaries = [s for s in summaries
+                 if s.get("folds") and "history" in s["folds"][0]]
+    if not summaries:
+        return
     fig, axes = plt.subplots(1, 3, figsize=(13, 4))
     for ax, (metric, label) in zip(axes, _METRICS):
         for s in summaries:
